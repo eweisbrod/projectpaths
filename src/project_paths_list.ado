@@ -1,0 +1,148 @@
+program define project_paths_list, rclass
+    version 16.0
+    /*
+      PROJECT_PATHS_LIST
+      A per-user registry of project roots, stored in the user's PERSONAL directory.
+
+      Core usage:
+        project_paths_list, project(<key>) [cd]
+
+      Registry management:
+        project_paths_list, add    project(<key>) path("<dir>")
+        project_paths_list, remove project(<key>)
+        project_paths_list, list
+        project_paths_list, where
+
+      Side effects (get mode):
+        - sets global PROJROOT
+        - returns r(root)
+    */
+
+    syntax , ///
+        [ PROJECT(name) ///
+          PATH(string asis) ///
+          ADD REMOVE LIST WHERE CD ]
+
+    // Registry file lives in PERSONAL (user-writable; per-user config)
+    local personal : sysdir PERSONAL
+    local regfile "`personal'project_paths_registry.dta"
+
+    // Ensure registry exists
+    capture confirm file "`regfile'"
+    if _rc {
+        preserve
+            clear
+            set obs 0
+            gen str80 key = ""
+            gen strL  root = ""
+            save "`regfile'", replace
+        restore
+    }
+
+    // WHERE: show registry location (useful for debugging)
+    if "`where'" != "" {
+        di as txt "PERSONAL: `personal'"
+        di as txt "Registry : `regfile'"
+        return local personal "`personal'"
+        return local regfile  "`regfile'"
+        exit
+    }
+
+    // LIST: display all keys
+    if "`list'" != "" {
+        preserve
+            use "`regfile'", clear
+            sort key
+            list key root, noobs abbreviate(32)
+        restore
+        exit
+    }
+
+    // For add/remove/get we require a project key
+    if "`project'" == "" {
+        di as error "You must supply project(<key>) (or use list/where)."
+        exit 198
+    }
+    local k = lower("`project'")
+
+    // REMOVE
+    if "`remove'" != "" {
+        preserve
+            use "`regfile'", clear
+            quietly count if lower(key) == "`k'"
+            if r(N) == 0 {
+                di as error "Project key not found: `project'"
+                restore
+                exit 111
+            }
+            drop if lower(key) == "`k'"
+            save "`regfile'", replace
+        restore
+        di as txt "Removed: `project'"
+        exit
+    }
+
+    // ADD (upsert)
+    if "`add'" != "" {
+        if `"`path'"' == "" {
+            di as error "add requires path(""..."")"
+            exit 198
+        }
+
+        // normalize to forward slashes (plays well with Mata + Windows)
+        local p = subinstr(`"`path'"',"\","/",.)
+
+        // validate directory exists (Windows-safe)
+        tempname ok
+        mata: st_numscalar("`ok'", direxists("`p'"))
+        if scalar(`ok') == 0 {
+            di as error "Directory does not exist: `p'"
+            exit 601
+        }
+
+        preserve
+            use "`regfile'", clear
+            drop if lower(key) == "`k'"
+
+            set obs `=_N+1'
+            replace key  = "`k'"     in L
+            replace root = `"`p'"'   in L
+
+            save "`regfile'", replace
+        restore
+
+        di as txt "Saved: `project' -> `p'"
+        return local root "`p'"
+        exit
+    }
+
+    // GET (default mode): retrieve root for project()
+    preserve
+        use "`regfile'", clear
+        keep if lower(key) == "`k'"
+        if _N == 0 {
+            restore
+            di as error "Unknown project key: `project'"
+            di as error "Add it with: project_paths_list, add project(`project') path(""..."")"
+            exit 111
+        }
+        local root = root[1]
+    restore
+
+    // validate stored root still exists
+    local root = subinstr("`root'","\","/",.)
+    tempname ok2
+    mata: st_numscalar("`ok2'", direxists("`root'"))
+    if scalar(`ok2') == 0 {
+        di as error "Stored project root no longer exists on this machine: `root'"
+        exit 601
+    }
+
+    global PROJROOT "`root'"
+    return local root "`root'"
+
+    if "`cd'" != "" {
+        cd "`root'"
+        di "`c(pwd)'"
+    }
+end

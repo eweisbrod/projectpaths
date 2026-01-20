@@ -1,0 +1,4 @@
+v 3
+d projectpaths: per-user project root registry (dotenv-like)
+f project_paths_list.ado
+f project_paths_list.sthlp

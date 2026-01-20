@@ -1,0 +1,3 @@
+v 3
+d projectpaths: per-user project root registry (dotenv-like)
+p projectpaths Project paths registry (project_paths_list)
