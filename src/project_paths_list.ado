@@ -80,7 +80,7 @@ program define project_paths_list, rclass
     }
 
     // Normalize key: lowercase + trim
-    local k = lower(strtrim("`project'"))
+    local k `"`=lower(strtrim(`"`project'"'))'"'
 
     // ---- REMOVE ----
     if "`remove'" != "" {
