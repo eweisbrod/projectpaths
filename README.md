@@ -3,5 +3,4 @@
 In Stata:
 
 ```stata
-cap ado uninstall projectpaths
-net install projectpaths, from("https://raw.githubusercontent.com/<you>/<repo>/main/src/")
+net install doenv, from(https://github.com/eweisbrod/projectpaths/raw/src/) replace
