@@ -146,7 +146,7 @@ program define project_paths_list, rclass
     // ---- GET (default): retrieve root for project() ----
     preserve
         use "`regfile'", clear
-        keep if lower(key) == "`k'"
+        quietly keep if lower(key) == "`k'"
         if _N == 0 {
             restore
             di as error "Unknown project key: `project'"
