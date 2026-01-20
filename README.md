@@ -1,0 +1,2 @@
+# projectpaths
+projectpaths Stata ado
