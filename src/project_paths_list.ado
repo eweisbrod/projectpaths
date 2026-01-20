@@ -13,13 +13,15 @@ program define project_paths_list, rclass
 
     syntax , ///
         [ PROJECT(string) ///
-          PATH(string asis) ///
+          PATH(string) ///
           ADD REMOVE LIST WHERE CD ]
 
     // ---- locate PERSONAL and registry file (robust path handling) ----
     local personal_raw : sysdir PERSONAL
-    local personal `"`=subinstr(`"`personal_raw'"',"\","/",.)'"'
-    if substr("`personal'", strlen("`personal'"), 1) != "/" local personal "`personal'/"
+    local personal = subinstr("`personal_raw'", "\", "/", .)
+    if substr("`personal'", strlen("`personal'"), 1) != "/" {
+        local personal "`personal'/"
+    }
 
     local regfile "`personal'project_paths_registry.dta"
 
@@ -77,8 +79,8 @@ program define project_paths_list, rclass
         exit 198
     }
 
-    // Normalize key: lowercase + trim (string-safe)
-    local k `"`=lower(strtrim(`"`project'"'))'"'
+    // Normalize key: lowercase + trim
+    local k = lower(strtrim("`project'"))
 
     // ---- REMOVE ----
     if "`remove'" != "" {
@@ -104,15 +106,15 @@ program define project_paths_list, rclass
 
     // ---- ADD (upsert) ----
     if "`add'" != "" {
-        if `"`path'"' == "" {
-            di as error "add requires path(""..."")"
+        if "`path'" == "" {
+            di as error "add requires path(...)"
             exit 198
         }
 
         // normalize path slashes
-        local p `"`=subinstr(`"`path'"',"\","/",.)'"'
+        local p = subinstr("`path'", "\", "/", .)
 
-        // validate directory exists (Windows-safe)
+        // validate directory exists
         tempname ok
         mata: st_numscalar("`ok'", direxists("`p'"))
         if scalar(`ok') == 0 {
@@ -125,8 +127,8 @@ program define project_paths_list, rclass
             drop if lower(key) == "`k'"
 
             set obs `=_N+1'
-            replace key  = "`k'"   in L
-            replace root = `"`p'"' in L
+            replace key  = "`k'"  in L
+            replace root = "`p'"  in L
 
             capture save "`regfile'", replace
             if _rc {
@@ -148,14 +150,14 @@ program define project_paths_list, rclass
         if _N == 0 {
             restore
             di as error "Unknown project key: `project'"
-            di as error "Add it with: project_paths_list, add project(`project') path(""..."")"
+            di as error "Add it with: project_paths_list, add project(`project') path(...)"
             exit 111
         }
         local root = root[1]
     restore
 
     // validate stored root still exists
-    local root `"`=subinstr(`"`root'"',"\","/",.)'"'
+    local root = subinstr("`root'", "\", "/", .)
     tempname ok2
     mata: st_numscalar("`ok2'", direxists("`root'"))
     if scalar(`ok2') == 0 {
