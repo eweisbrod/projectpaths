@@ -18,14 +18,12 @@ program define project_paths_list, rclass
 
     // ---- locate PERSONAL and registry file (robust path handling) ----
     local personal_raw : sysdir PERSONAL
-    // normalize to forward slashes for consistent handling
-    local personal = subinstr("`personal_raw'","\","/",.)
-    // ensure trailing slash
-    if substr("`personal'", -1, 1) != "/" local personal "`personal'/"
+    local personal `"`=subinstr(`"`personal_raw'"',"\","/",.)'"'
+    if substr("`personal'", strlen("`personal'"), 1) != "/" local personal "`personal'/"
 
     local regfile "`personal'project_paths_registry.dta"
 
-    // ---- ensure PERSONAL directory exists (create if needed) ----
+    // ---- ensure PERSONAL directory exists ----
     tempname okd
     mata: st_numscalar("`okd'", direxists("`personal'"))
     if scalar(`okd') == 0 {
@@ -41,11 +39,11 @@ program define project_paths_list, rclass
     capture confirm file "`regfile'"
     if _rc {
         preserve
-            clear
-            set obs 0
-            gen str80 key = ""
-            gen strL  root = ""
-            capture save "`regfile'", replace
+            quietly clear
+            quietly set obs 0
+            quietly gen str80 key = ""
+            quietly gen strL  root = ""
+            capture quietly save "`regfile'", replace
             if _rc {
                 restore
                 di as error "Could not create registry file: `regfile'"
@@ -79,7 +77,7 @@ program define project_paths_list, rclass
         exit 198
     }
 
-    // Normalize key: lowercase + trim
+    // Normalize key: lowercase + trim (string-safe)
     local k `"`=lower(strtrim(`"`project'"'))'"'
 
     // ---- REMOVE ----
@@ -112,7 +110,7 @@ program define project_paths_list, rclass
         }
 
         // normalize path slashes
-        local p = subinstr(`"`path'"',"\","/",.)
+        local p `"`=subinstr(`"`path'"',"\","/",.)'"'
 
         // validate directory exists (Windows-safe)
         tempname ok
@@ -157,7 +155,7 @@ program define project_paths_list, rclass
     restore
 
     // validate stored root still exists
-    local root = subinstr("`root'","\","/",.)
+    local root `"`=subinstr(`"`root'"',"\","/",.)'"'
     tempname ok2
     mata: st_numscalar("`ok2'", direxists("`root'"))
     if scalar(`ok2') == 0 {
