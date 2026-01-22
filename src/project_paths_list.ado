@@ -1,24 +1,20 @@
+```stata
 program define project_paths_list, rclass
     version 16.0
     /*
       Per-user project root registry stored in PERSONAL.
 
-      Primary use (1-liner, Ctrl+D friendly):
-        project_paths_list, project(<key>) [cd]
-
-      If <key> is missing:
-        - interactive: prompts for a path, saves it, continues
-        - batch or noprompt: errors (won't hang)
-
-      Registry management:
+      Usage:
+        project_paths_list, project(<key>) [cd] [noprompt]
         project_paths_list, add    project(<key>) path("<dir>")
         project_paths_list, remove project(<key>)
         project_paths_list, list
         project_paths_list, where
 
-      Options:
-        cd        : cd to the project root after resolving
-        noprompt  : never prompt; error instead (batch-safe)
+      Interactive behavior:
+        - If project(<key>) is missing (or stored path is invalid) and Stata is interactive,
+          prompt for the path, save it, and continue.
+        - If running in batch mode or noprompt is specified, never prompt; error instead.
     */
 
     syntax , ///
@@ -26,12 +22,16 @@ program define project_paths_list, rclass
           PATH(string asis) ///
           ADD REMOVE LIST WHERE CD NOPROMPT ]
 
+    // Detect batch mode (non-interactive). In batch, never prompt.
+    local is_batch = (strpos("`c(mode)'", "batch") > 0)
+
     // ---- locate PERSONAL and registry file (robust path handling) ----
     local personal_raw : sysdir PERSONAL
     local personal "`personal_raw'"
-    // normalize slashes for consistency
     mata: st_local("personal", subinstr(st_local("personal"), char(92), "/", .))
-    if substr("`personal'", strlen("`personal'"), 1) != "/" local personal "`personal'/"
+    if substr("`personal'", strlen("`personal'"), 1) != "/" {
+        local personal "`personal'/"
+    }
 
     local regfile "`personal'project_paths_registry.dta"
 
@@ -89,13 +89,11 @@ program define project_paths_list, rclass
         exit 198
     }
 
-    // normalize key: trim + lowercase (hyphens allowed)
+    // Normalize key: lowercase + trim (string-safe via Mata)
     local k "`project'"
     mata: st_local("k", strlower(strtrim(st_local("k"))))
 
-    // ----------------------------
-    // REMOVE
-    // ----------------------------
+    // ---- REMOVE ----
     if "`remove'" != "" {
         preserve
             use "`regfile'", clear
@@ -117,17 +115,15 @@ program define project_paths_list, rclass
         exit
     }
 
-    // ----------------------------
-    // ADD (upsert)
-    // ----------------------------
+    // ---- ADD (upsert) ----
     if "`add'" != "" {
         if `"`path'"' == "" {
             di as error "add requires path(""..."")"
             exit 198
         }
 
+        // normalize path slashes (Mata; handles backslashes cleanly)
         local p `"`path'"'
-        // normalize slashes
         mata: st_local("p", subinstr(st_local("p"), char(92), "/", .))
 
         // validate directory exists
@@ -138,13 +134,14 @@ program define project_paths_list, rclass
             exit 601
         }
 
-        // upsert
         preserve
             use "`regfile'", clear
             drop if lower(key) == "`k'"
+
             set obs `=_N+1'
             replace key  = "`k'"   in L
             replace root = `"`p'"' in L
+
             capture save "`regfile'", replace
             if _rc {
                 restore
@@ -158,27 +155,24 @@ program define project_paths_list, rclass
         exit
     }
 
-    // ----------------------------
-    // GET (default): resolve root, with interactive fallback
-    // ----------------------------
+    // ---- GET (default): retrieve root for project() ----
     local root ""
 
     preserve
         use "`regfile'", clear
-        keep if lower(key) == "`k'"
-
+        quietly keep if lower(key) == "`k'"
         if _N > 0 {
-            keep in 1
+            // st_sdata works for strL; local root = root[1] does NOT
+            quietly keep in 1
             mata: st_local("root", st_sdata(1, "root"))
         }
     restore
 
-    // If missing key: interactive prompt unless batch/noprompt
+    // If missing key, prompt (interactive) unless noprompt/batch
     if "`root'" == "" {
-        if "`noprompt'" != "" | c(batch) {
+        if "`noprompt'" != "" | `is_batch' {
             di as error "Unknown project key: `project'"
-            di as error "Run interactively once to register it, or do:"
-            di as error `"  project_paths_list, add project(`project') path(""..."" )"'
+            di as error `"Add it with: project_paths_list, add project(`project') path(""..."" )"'
             exit 111
         }
 
@@ -195,7 +189,7 @@ program define project_paths_list, rclass
             exit 601
         }
 
-        // upsert new entry
+        // Save it (upsert) to registry
         preserve
             use "`regfile'", clear
             drop if lower(key) == "`k'"
@@ -213,14 +207,14 @@ program define project_paths_list, rclass
         local root "`p'"
     }
     else {
-        // normalize stored root
+        // normalize stored root slashes
         mata: st_local("root", subinstr(st_local("root"), char(92), "/", .))
 
-        // if stored path missing: prompt to update unless batch/noprompt
+        // validate stored root exists; if not, prompt to update unless noprompt/batch
         tempname ok2
         mata: st_numscalar("`ok2'", direxists("`root'"))
         if scalar(`ok2') == 0 {
-            if "`noprompt'" != "" | c(batch) {
+            if "`noprompt'" != "" | `is_batch' {
                 di as error "Stored project root no longer exists on this machine: `root'"
                 exit 601
             }
@@ -238,7 +232,7 @@ program define project_paths_list, rclass
                 exit 601
             }
 
-            // upsert updated entry
+            // Update registry (upsert)
             preserve
                 use "`regfile'", clear
                 drop if lower(key) == "`k'"
@@ -257,7 +251,7 @@ program define project_paths_list, rclass
         }
     }
 
-    // Expose + optional cd
+    // Expose resolved root
     global PROJROOT "`root'"
     return local root "`root'"
 
@@ -266,3 +260,4 @@ program define project_paths_list, rclass
         di "`c(pwd)'"
     }
 end
+```
