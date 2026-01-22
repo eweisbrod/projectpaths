@@ -1,4 +1,3 @@
-````md
 # projectpaths (Stata)
 
 A tiny Stata utility that gives you **dotenv-like project roots** without hardcoding absolute paths in do-files.
@@ -176,7 +175,6 @@ PRs welcome. A few possible extensions:
 * Optional `setup` alias (though current default behavior already prompts on missing keys)
 * Export/import registry for migration across machines
 
-```
 
 If you want, I can also draft a `LICENSE` (MIT) file and add a short “Security note” section (e.g., “don’t store secrets here; use OS env vars for API keys”).
 ::contentReference[oaicite:0]{index=0}
