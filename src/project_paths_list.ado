@@ -209,4 +209,58 @@ program define project_paths_list, rclass
         local root "`p'"
     }
     else {
-        // Norm
+        // Normalize stored root slashes and validate
+        mata: st_local("root", subinstr(st_local("root"), char(92), "/", .))
+
+        tempname ok2
+        mata: st_numscalar("`ok2'", direxists("`root'"))
+        if scalar(`ok2') == 0 {
+            if "`noprompt'" != "" | `is_batch' {
+                di as error "Stored project root no longer exists:"
+                di as error "`root'"
+                exit 601
+            }
+
+            local p ""
+            window stopbox input "Project Paths" ///
+                "Stored path missing. Enter UPDATED root directory path:" p
+            if `"`p'"' == "" exit 198
+
+            mata: st_local("p", subinstr(st_local("p"), char(92), "/", .))
+            tempname ok3
+            mata: st_numscalar("`ok3'", direxists("`p'"))
+            if scalar(`ok3') == 0 {
+                di as error "Directory does not exist:"
+                di as error "`p'"
+                exit 601
+            }
+
+            // Update registry (upsert)
+            preserve
+                use "`regfile'", clear
+                drop if lower(key) == "`k'"
+                set obs `=_N+1'
+                replace key  = "`k'"   in L
+                replace root = `"`p'"' in L
+                capture save "`regfile'", replace
+                if _rc {
+                    restore
+                    di as error "Could not update registry file:"
+                    di as error "`regfile'"
+                    exit 603
+                }
+            restore
+
+            local root "`p'"
+        }
+    }
+
+    // Expose resolved root
+    global PROJROOT "`root'"
+    return local root "`root'"
+
+    if "`cd'" != "" {
+        cd "`root'"
+        di "`c(pwd)'"
+    }
+end
