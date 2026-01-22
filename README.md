@@ -165,6 +165,4 @@ Run interactively (no `noprompt`) and it will prompt you to update the path.
 
 MIT (see `LICENSE`).
 
----
-
 
