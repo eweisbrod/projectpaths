@@ -176,10 +176,15 @@ program define project_paths_list, rclass
             exit 111
         }
 
-        local p ""
-        window stopbox input "Project Paths" ///
-            "Project not found. Enter root directory path:" p
-        if `"`p'"' == "" exit 198
+        di as txt "Project not found: `project'"
+        di as txt "Enter root directory path (or press Enter to cancel):"
+        di as txt "> " _request(_p)
+        local p = trim(`"`p'"')
+        
+        if `"`p'"' == "" {
+            di as error "Cancelled."
+            exit 1
+        }
 
         mata: st_local("p", subinstr(st_local("p"), char(92), "/", .))
         tempname okm
@@ -221,10 +226,16 @@ program define project_paths_list, rclass
                 exit 601
             }
 
-            local p ""
-            window stopbox input "Project Paths" ///
-                "Stored path missing. Enter UPDATED root directory path:" p
-            if `"`p'"' == "" exit 198
+            di as txt "Stored path missing for: `project'"
+            di as txt "Current (invalid) path: `root'"
+            di as txt "Enter UPDATED root directory path (or press Enter to cancel):"
+            di as txt "> " _request(_p)
+            local p = trim(`"`p'"')
+            
+            if `"`p'"' == "" {
+                di as error "Cancelled."
+                exit 1
+            }
 
             mata: st_local("p", subinstr(st_local("p"), char(92), "/", .))
             tempname ok3
