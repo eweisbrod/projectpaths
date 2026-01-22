@@ -1,4 +1,3 @@
-```stata
 program define project_paths_list, rclass
     version 16.0
     /*
@@ -22,7 +21,7 @@ program define project_paths_list, rclass
           PATH(string asis) ///
           ADD REMOVE LIST WHERE CD NOPROMPT ]
 
-    // Detect batch mode (non-interactive). In batch, never prompt.
+    // Detect batch mode (non-interactive): c(mode) contains "batch" in batch runs
     local is_batch = (strpos("`c(mode)'", "batch") > 0)
 
     // ---- locate PERSONAL and registry file (robust path handling) ----
@@ -42,7 +41,8 @@ program define project_paths_list, rclass
         capture mkdir "`personal'"
         mata: st_numscalar("`okd'", direxists("`personal'"))
         if scalar(`okd') == 0 {
-            di as error "Could not create or access PERSONAL directory: `personal'"
+            di as error "Could not create or access PERSONAL directory:"
+            di as error "`personal'"
             exit 603
         }
     }
@@ -58,7 +58,8 @@ program define project_paths_list, rclass
             capture quietly save "`regfile'", replace
             if _rc {
                 restore
-                di as error "Could not create registry file: `regfile'"
+                di as error "Could not create registry file:"
+                di as error "`regfile'"
                 exit 603
             }
         restore
@@ -89,7 +90,7 @@ program define project_paths_list, rclass
         exit 198
     }
 
-    // Normalize key: lowercase + trim (string-safe via Mata)
+    // Normalize key: lowercase + trim (Mata-safe, allows hyphens)
     local k "`project'"
     mata: st_local("k", strlower(strtrim(st_local("k"))))
 
@@ -107,7 +108,8 @@ program define project_paths_list, rclass
             capture save "`regfile'", replace
             if _rc {
                 restore
-                di as error "Could not update registry file: `regfile'"
+                di as error "Could not update registry file:"
+                di as error "`regfile'"
                 exit 603
             }
         restore
@@ -122,30 +124,28 @@ program define project_paths_list, rclass
             exit 198
         }
 
-        // normalize path slashes (Mata; handles backslashes cleanly)
         local p `"`path'"'
         mata: st_local("p", subinstr(st_local("p"), char(92), "/", .))
 
-        // validate directory exists
         tempname ok
         mata: st_numscalar("`ok'", direxists("`p'"))
         if scalar(`ok') == 0 {
-            di as error "Directory does not exist: `p'"
+            di as error "Directory does not exist:"
+            di as error "`p'"
             exit 601
         }
 
         preserve
             use "`regfile'", clear
             drop if lower(key) == "`k'"
-
             set obs `=_N+1'
             replace key  = "`k'"   in L
             replace root = `"`p'"' in L
-
             capture save "`regfile'", replace
             if _rc {
                 restore
-                di as error "Could not update registry file: `regfile'"
+                di as error "Could not update registry file:"
+                di as error "`regfile'"
                 exit 603
             }
         restore
@@ -162,34 +162,35 @@ program define project_paths_list, rclass
         use "`regfile'", clear
         quietly keep if lower(key) == "`k'"
         if _N > 0 {
-            // st_sdata works for strL; local root = root[1] does NOT
             quietly keep in 1
             mata: st_local("root", st_sdata(1, "root"))
         }
     restore
 
-    // If missing key, prompt (interactive) unless noprompt/batch
+    // If missing key, prompt unless noprompt or batch
     if "`root'" == "" {
         if "`noprompt'" != "" | `is_batch' {
             di as error "Unknown project key: `project'"
-            di as error `"Add it with: project_paths_list, add project(`project') path(""..."" )"'
+            di as error "Register it (interactive) or run:"
+            di as error "  project_paths_list, add project(<key>) path(""C:/path/to/project"")"
             exit 111
         }
 
         local p ""
         window stopbox input "Project Paths" ///
-            "Project '`project'' not found. Enter root directory path:" p
+            "Project not found. Enter root directory path:" p
         if `"`p'"' == "" exit 198
 
         mata: st_local("p", subinstr(st_local("p"), char(92), "/", .))
         tempname okm
         mata: st_numscalar("`okm'", direxists("`p'"))
         if scalar(`okm') == 0 {
-            di as error "Directory does not exist: `p'"
+            di as error "Directory does not exist:"
+            di as error "`p'"
             exit 601
         }
 
-        // Save it (upsert) to registry
+        // Save it (upsert)
         preserve
             use "`regfile'", clear
             drop if lower(key) == "`k'"
@@ -199,7 +200,8 @@ program define project_paths_list, rclass
             capture save "`regfile'", replace
             if _rc {
                 restore
-                di as error "Could not update registry file: `regfile'"
+                di as error "Could not update registry file:"
+                di as error "`regfile'"
                 exit 603
             }
         restore
@@ -207,57 +209,4 @@ program define project_paths_list, rclass
         local root "`p'"
     }
     else {
-        // normalize stored root slashes
-        mata: st_local("root", subinstr(st_local("root"), char(92), "/", .))
-
-        // validate stored root exists; if not, prompt to update unless noprompt/batch
-        tempname ok2
-        mata: st_numscalar("`ok2'", direxists("`root'"))
-        if scalar(`ok2') == 0 {
-            if "`noprompt'" != "" | `is_batch' {
-                di as error "Stored project root no longer exists on this machine: `root'"
-                exit 601
-            }
-
-            local p ""
-            window stopbox input "Project Paths" ///
-                "Stored path for '`project'' is missing. Enter UPDATED root directory path:" p
-            if `"`p'"' == "" exit 198
-
-            mata: st_local("p", subinstr(st_local("p"), char(92), "/", .))
-            tempname ok3
-            mata: st_numscalar("`ok3'", direxists("`p'"))
-            if scalar(`ok3') == 0 {
-                di as error "Directory does not exist: `p'"
-                exit 601
-            }
-
-            // Update registry (upsert)
-            preserve
-                use "`regfile'", clear
-                drop if lower(key) == "`k'"
-                set obs `=_N+1'
-                replace key  = "`k'"   in L
-                replace root = `"`p'"' in L
-                capture save "`regfile'", replace
-                if _rc {
-                    restore
-                    di as error "Could not update registry file: `regfile'"
-                    exit 603
-                }
-            restore
-
-            local root "`p'"
-        }
-    }
-
-    // Expose resolved root
-    global PROJROOT "`root'"
-    return local root "`root'"
-
-    if "`cd'" != "" {
-        cd "`root'"
-        di "`c(pwd)'"
-    }
-end
-```
+        // Norm
