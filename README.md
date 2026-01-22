@@ -10,7 +10,7 @@ project_paths_list, project(my-project) cd
 
 * If `my-project` is not registered yet (interactive Stata), it will **prompt you once** for the root path and save it.
 * After that, it just works on that machine.
-* In batch/CI runs (or with `noprompt`), it will **never** prompt and will error if missing.
+
 
 ---
 
@@ -167,15 +167,4 @@ MIT (see `LICENSE`).
 
 ---
 
-## Contributing / Ideas
 
-PRs welcome. A few possible extensions:
-
-* Convenience globals for common subfolders (e.g., `$PROJ_DATA`, `$PROJ_CODE`, `$PROJ_OUT`)
-* Optional `setup` alias (though current default behavior already prompts on missing keys)
-* Export/import registry for migration across machines
-
-
-If you want, I can also draft a `LICENSE` (MIT) file and add a short “Security note” section (e.g., “don’t store secrets here; use OS env vars for API keys”).
-::contentReference[oaicite:0]{index=0}
-```
