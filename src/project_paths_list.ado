@@ -3,25 +3,35 @@ program define project_paths_list, rclass
     /*
       Per-user project root registry stored in PERSONAL.
 
-      Usage:
+      Primary use (1-liner, Ctrl+D friendly):
         project_paths_list, project(<key>) [cd]
+
+      If <key> is missing:
+        - interactive: prompts for a path, saves it, continues
+        - batch or noprompt: errors (won't hang)
+
+      Registry management:
         project_paths_list, add    project(<key>) path("<dir>")
         project_paths_list, remove project(<key>)
         project_paths_list, list
         project_paths_list, where
+
+      Options:
+        cd        : cd to the project root after resolving
+        noprompt  : never prompt; error instead (batch-safe)
     */
 
     syntax , ///
         [ PROJECT(string) ///
-          PATH(string) ///
-          ADD REMOVE LIST WHERE CD ]
+          PATH(string asis) ///
+          ADD REMOVE LIST WHERE CD NOPROMPT ]
 
     // ---- locate PERSONAL and registry file (robust path handling) ----
     local personal_raw : sysdir PERSONAL
-    local personal = subinstr("`personal_raw'", "\", "/", .)
-    if substr("`personal'", strlen("`personal'"), 1) != "/" {
-        local personal "`personal'/"
-    }
+    local personal "`personal_raw'"
+    // normalize slashes for consistency
+    mata: st_local("personal", subinstr(st_local("personal"), char(92), "/", .))
+    if substr("`personal'", strlen("`personal'"), 1) != "/" local personal "`personal'/"
 
     local regfile "`personal'project_paths_registry.dta"
 
@@ -79,10 +89,13 @@ program define project_paths_list, rclass
         exit 198
     }
 
-    // Normalize key: lowercase + trim
-    local k = lower(strtrim("`project'"))
+    // normalize key: trim + lowercase (hyphens allowed)
+    local k "`project'"
+    mata: st_local("k", strlower(strtrim(st_local("k"))))
 
-    // ---- REMOVE ----
+    // ----------------------------
+    // REMOVE
+    // ----------------------------
     if "`remove'" != "" {
         preserve
             use "`regfile'", clear
@@ -104,15 +117,18 @@ program define project_paths_list, rclass
         exit
     }
 
-    // ---- ADD (upsert) ----
+    // ----------------------------
+    // ADD (upsert)
+    // ----------------------------
     if "`add'" != "" {
-        if "`path'" == "" {
-            di as error "add requires path(...)"
+        if `"`path'"' == "" {
+            di as error "add requires path(""..."")"
             exit 198
         }
 
-        // normalize path slashes
-        local p = subinstr("`path'", "\", "/", .)
+        local p `"`path'"'
+        // normalize slashes
+        mata: st_local("p", subinstr(st_local("p"), char(92), "/", .))
 
         // validate directory exists
         tempname ok
@@ -122,14 +138,13 @@ program define project_paths_list, rclass
             exit 601
         }
 
+        // upsert
         preserve
             use "`regfile'", clear
             drop if lower(key) == "`k'"
-
             set obs `=_N+1'
-            replace key  = "`k'"  in L
-            replace root = "`p'"  in L
-
+            replace key  = "`k'"   in L
+            replace root = `"`p'"' in L
             capture save "`regfile'", replace
             if _rc {
                 restore
@@ -143,28 +158,106 @@ program define project_paths_list, rclass
         exit
     }
 
-    // ---- GET (default): retrieve root for project() ----
+    // ----------------------------
+    // GET (default): resolve root, with interactive fallback
+    // ----------------------------
+    local root ""
+
     preserve
         use "`regfile'", clear
-        quietly keep if lower(key) == "`k'"
-        if _N == 0 {
-            restore
-            di as error "Unknown project key: `project'"
-            di as error "Add it with: project_paths_list, add project(`project') path(...)"
-            exit 111
+        keep if lower(key) == "`k'"
+
+        if _N > 0 {
+            keep in 1
+            mata: st_local("root", st_sdata(1, "root"))
         }
-        local root = root[1]
     restore
 
-    // validate stored root still exists
-    local root = subinstr("`root'", "\", "/", .)
-    tempname ok2
-    mata: st_numscalar("`ok2'", direxists("`root'"))
-    if scalar(`ok2') == 0 {
-        di as error "Stored project root no longer exists on this machine: `root'"
-        exit 601
+    // If missing key: interactive prompt unless batch/noprompt
+    if "`root'" == "" {
+        if "`noprompt'" != "" | c(batch) {
+            di as error "Unknown project key: `project'"
+            di as error "Run interactively once to register it, or do:"
+            di as error `"  project_paths_list, add project(`project') path(""..."" )"'
+            exit 111
+        }
+
+        local p ""
+        window stopbox input "Project Paths" ///
+            "Project '`project'' not found. Enter root directory path:" p
+        if `"`p'"' == "" exit 198
+
+        mata: st_local("p", subinstr(st_local("p"), char(92), "/", .))
+        tempname okm
+        mata: st_numscalar("`okm'", direxists("`p'"))
+        if scalar(`okm') == 0 {
+            di as error "Directory does not exist: `p'"
+            exit 601
+        }
+
+        // upsert new entry
+        preserve
+            use "`regfile'", clear
+            drop if lower(key) == "`k'"
+            set obs `=_N+1'
+            replace key  = "`k'"   in L
+            replace root = `"`p'"' in L
+            capture save "`regfile'", replace
+            if _rc {
+                restore
+                di as error "Could not update registry file: `regfile'"
+                exit 603
+            }
+        restore
+
+        local root "`p'"
+    }
+    else {
+        // normalize stored root
+        mata: st_local("root", subinstr(st_local("root"), char(92), "/", .))
+
+        // if stored path missing: prompt to update unless batch/noprompt
+        tempname ok2
+        mata: st_numscalar("`ok2'", direxists("`root'"))
+        if scalar(`ok2') == 0 {
+            if "`noprompt'" != "" | c(batch) {
+                di as error "Stored project root no longer exists on this machine: `root'"
+                exit 601
+            }
+
+            local p ""
+            window stopbox input "Project Paths" ///
+                "Stored path for '`project'' is missing. Enter UPDATED root directory path:" p
+            if `"`p'"' == "" exit 198
+
+            mata: st_local("p", subinstr(st_local("p"), char(92), "/", .))
+            tempname ok3
+            mata: st_numscalar("`ok3'", direxists("`p'"))
+            if scalar(`ok3') == 0 {
+                di as error "Directory does not exist: `p'"
+                exit 601
+            }
+
+            // upsert updated entry
+            preserve
+                use "`regfile'", clear
+                drop if lower(key) == "`k'"
+                set obs `=_N+1'
+                replace key  = "`k'"   in L
+                replace root = `"`p'"' in L
+                capture save "`regfile'", replace
+                if _rc {
+                    restore
+                    di as error "Could not update registry file: `regfile'"
+                    exit 603
+                }
+            restore
+
+            local root "`p'"
+        }
     }
 
+    // Expose + optional cd
     global PROJROOT "`root'"
     return local root "`root'"
 
