@@ -173,4 +173,101 @@ program define project_paths_list, rclass
             exit 111
         }
 
-        di
+        di as txt "Project not found: `project'"
+        di as txt "Enter root directory path (or press Enter to cancel):"
+        di as txt "> " _request(_p)
+        local p = trim(`"`p'"')
+        
+        if `"`p'"' == "" {
+            di as error "Cancelled."
+            exit 1
+        }
+
+        local p = subinstr(`"`p'"', "\", "/", .)
+        
+        capture confirm file "`p'/."
+        if _rc {
+            di as error "Directory does not exist:"
+            di as error "`p'"
+            exit 601
+        }
+
+        // Save it (upsert)
+        preserve
+            use "`regfile'", clear
+            drop if lower(key) == "`k'"
+            set obs `=_N+1'
+            replace key  = "`k'"   in L
+            replace root = `"`p'"' in L
+            capture save "`regfile'", replace
+            if _rc {
+                restore
+                di as error "Could not update registry file:"
+                di as error "`regfile'"
+                exit 603
+            }
+        restore
+
+        local root "`p'"
+    }
+    else {
+        // Normalize stored root slashes and validate
+        local root = subinstr("`root'", "\", "/", .)
+
+        capture confirm file "`root'/."
+        if _rc {
+            if "`noprompt'" != "" | `is_batch' {
+                di as error "Stored project root no longer exists:"
+                di as error "`root'"
+                exit 601
+            }
+
+            di as txt "Stored path missing for: `project'"
+            di as txt "Current (invalid) path: `root'"
+            di as txt "Enter UPDATED root directory path (or press Enter to cancel):"
+            di as txt "> " _request(_p)
+            local p = trim(`"`p'"')
+            
+            if `"`p'"' == "" {
+                di as error "Cancelled."
+                exit 1
+            }
+
+            local p = subinstr(`"`p'"', "\", "/", .)
+            
+            capture confirm file "`p'/."
+            if _rc {
+                di as error "Directory does not exist:"
+                di as error "`p'"
+                exit 601
+            }
+
+            // Update registry (upsert)
+            preserve
+                use "`regfile'", clear
+                drop if lower(key) == "`k'"
+                set obs `=_N+1'
+                replace key  = "`k'"   in L
+                replace root = `"`p'"' in L
+                capture save "`regfile'", replace
+                if _rc {
+                    restore
+                    di as error "Could not update registry file:"
+                    di as error "`regfile'"
+                    exit 603
+                }
+            restore
+
+            local root "`p'"
+        }
+    }
+
+    // Expose resolved root
+    global PROJROOT "`root'"
+    return local root "`root'"
+
+    if "`cd'" != "" {
+        cd "`root'"
+        di "`c(pwd)'"
+    }
+end
