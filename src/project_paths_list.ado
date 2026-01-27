@@ -11,23 +11,25 @@ program define project_paths_list, rclass
         project_paths_list, where
         
       Notes:
-        - Project names can contain hyphens (e.g., my-project)
+        - Project names can contain hyphens (e.g., "my-project") - use quotes
         - Paths work on Windows (C:/path) and Mac (/Users/path)
-        - Uses Mata's direxists() for directory validation
     */
 
     syntax , ///
-        [ PROJECT(string asis) ///
-          PATH(string asis) ///
+        [ PROJECT(string) ///
+          PATH(string) ///
           ADD REMOVE LIST WHERE CD NOPROMPT ]
 
     // Detect batch mode (non-interactive)
     local is_batch = (strpos("`c(mode)'", "batch") > 0)
+    
+    // Save original working directory at the start
+    local _origdir "`c(pwd)'"
 
     // ---- locate PERSONAL and registry file ----
     local personal : sysdir PERSONAL
     
-    // Normalize path separators using Mata (handles special chars safely)
+    // Normalize path separators using Mata
     mata: st_local("personal", subinstr(st_local("personal"), "\", "/", .))
     
     // Ensure trailing slash
@@ -38,16 +40,19 @@ program define project_paths_list, rclass
     local regfile "`personal'project_paths_registry.dta"
 
     // ---- ensure PERSONAL directory exists ----
-    mata: st_local("_dircheck", strofreal(direxists(st_local("personal"))))
-    if `_dircheck' == 0 {
+    capture cd "`personal'"
+    if _rc {
         capture mkdir "`personal'"
-        mata: st_local("_dircheck", strofreal(direxists(st_local("personal"))))
-        if `_dircheck' == 0 {
+        capture cd "`personal'"
+        if _rc {
+            quietly cd "`_origdir'"
             di as error "Could not create or access PERSONAL directory:"
             di as error "`personal'"
             exit 603
         }
     }
+    // Return to original directory
+    quietly cd "`_origdir'"
 
     // ---- ensure registry exists ----
     capture confirm file "`regfile'"
@@ -87,15 +92,13 @@ program define project_paths_list, rclass
     }
 
     // For add/remove/get require project()
-    if `"`project'"' == "" {
+    if "`project'" == "" {
         di as error "You must supply project(<key>) (or use list/where)."
         exit 198
     }
 
-    // Normalize key: lowercase + trim (use Mata to handle special chars)
-    local k `"`project'"'
-    // Remove surrounding quotes if present
-    mata: st_local("k", strtrim(strlower(st_local("k"))))
+    // Normalize key: lowercase + trim using Mata
+    mata: st_local("k", strtrim(strlower(st_local("project"))))
 
     // ---- REMOVE ----
     if "`remove'" != "" {
@@ -103,8 +106,8 @@ program define project_paths_list, rclass
             use "`regfile'", clear
             quietly count if lower(key) == "`k'"
             if r(N) == 0 {
-                di as error "Project key not found: `project'"
                 restore
+                di as error "Project key not found: `project'"
                 exit 111
             }
             drop if lower(key) == "`k'"
@@ -122,27 +125,28 @@ program define project_paths_list, rclass
 
     // ---- ADD (upsert) ----
     if "`add'" != "" {
-        if `"`path'"' == "" {
+        if "`path'" == "" {
             di as error "add requires path()"
             exit 198
         }
 
-        // Get path and normalize slashes using Mata
-        local p `"`path'"'
-        mata: st_local("p", subinstr(st_local("p"), "\", "/", .))
+        // Normalize slashes using Mata
+        mata: st_local("p", subinstr(st_local("path"), "\", "/", .))
         
         // Remove trailing slash if present (for consistency)
         if substr("`p'", -1, 1) == "/" {
             local p = substr("`p'", 1, strlen("`p'") - 1)
         }
 
-        // Validate directory exists using Mata
-        mata: st_local("_dircheck", strofreal(direxists(st_local("p"))))
-        if `_dircheck' == 0 {
+        // Validate directory exists by trying to cd to it
+        capture cd "`p'"
+        if _rc {
+            quietly cd "`_origdir'"
             di as error "Directory does not exist:"
             di as error "`p'"
             exit 601
         }
+        quietly cd "`_origdir'"
 
         preserve
             use "`regfile'", clear
@@ -188,9 +192,9 @@ program define project_paths_list, rclass
         di as txt "Project not found: `project'"
         di as txt "Enter root directory path (or press Enter to cancel):"
         display _request(_p)
-        local p = strtrim(`"`_p'"')
+        local p = strtrim("`_p'")
         
-        if `"`p'"' == "" {
+        if "`p'" == "" {
             di as error "Cancelled."
             exit 1
         }
@@ -198,13 +202,15 @@ program define project_paths_list, rclass
         // Normalize slashes
         mata: st_local("p", subinstr(st_local("p"), "\", "/", .))
         
-        // Validate directory
-        mata: st_local("_dircheck", strofreal(direxists(st_local("p"))))
-        if `_dircheck' == 0 {
+        // Validate directory by trying to cd
+        capture cd "`p'"
+        if _rc {
+            quietly cd "`_origdir'"
             di as error "Directory does not exist:"
             di as error "`p'"
             exit 601
         }
+        quietly cd "`_origdir'"
 
         // Save to registry
         preserve
@@ -228,13 +234,15 @@ program define project_paths_list, rclass
     // Normalize stored root path
     mata: st_local("root", subinstr(st_local("root"), "\", "/", .))
     
-    // Validate stored root still exists
-    mata: st_local("_dircheck", strofreal(direxists(st_local("root"))))
-    if `_dircheck' == 0 {
+    // Validate stored root still exists by trying to cd
+    capture cd "`root'"
+    if _rc {
+        quietly cd "`_origdir'"
         di as error "Stored project root no longer exists on this machine:"
         di as error "`root'"
         exit 601
     }
+    quietly cd "`_origdir'"
 
     global PROJROOT "`root'"
     return local root "`root'"
