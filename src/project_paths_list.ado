@@ -35,15 +35,13 @@ program define project_paths_list, rclass
     local regfile "`personal'project_paths_registry.dta"
 
     // ---- ensure PERSONAL directory exists ----
-    capture confirm file "`personal'/."
-    if _rc {
-        capture mkdir "`personal'"
-        capture confirm file "`personal'/."
-        if _rc {
-            di as error "Could not create or access PERSONAL directory:"
-            di as error "`personal'"
-            exit 603
-        }
+    capture mkdir "`personal'"
+    if _rc & _rc != 693 {
+        // _rc == 693 means directory already exists (not an error)
+        di as error "Could not create PERSONAL directory:"
+        di as error "`personal'"
+        di as error "Error code: `=_rc'"
+        exit 603
     }
 
     // ---- ensure registry exists ----
@@ -59,6 +57,7 @@ program define project_paths_list, rclass
                 restore
                 di as error "Could not create registry file:"
                 di as error "`regfile'"
+                di as error "Check write permissions for: `personal'"
                 exit 603
             }
         restore
