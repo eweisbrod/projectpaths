@@ -118,42 +118,43 @@ program define project_paths_list, rclass
     }
 
     // ---- ADD (upsert) ----
-    if "`add'" != "" {
-        if `"`path'"' == "" {
-            di as error "add requires path(""..."")"
-            exit 198
-        }
-
-        local p `"`path'"'
-        mata: st_local("p", subinstr(st_local("p", ""), char(92), "/", .))
-
-        tempname ok
-        mata: st_numscalar("`ok'", direxists(st_local("p", "")))
-        if scalar(`ok') == 0 {
-            di as error "Directory does not exist:"
-            di as error "`p'"
-            exit 601
-        }
-
-        preserve
-            use "`regfile'", clear
-            drop if lower(key) == "`k'"
-            set obs `=_N+1'
-            replace key  = "`k'"   in L
-            replace root = `"`p'"' in L
-            capture save "`regfile'", replace
-            if _rc {
-                restore
-                di as error "Could not update registry file:"
-                di as error "`regfile'"
-                exit 603
-            }
-        restore
-
-        di as txt "Saved: `project' -> `p'"
-        return local root "`p'"
-        exit
+if "`add'" != "" {
+    if `"`path'"' == "" {
+        di as error "add requires path(""..."")"
+        exit 198
     }
+
+    local p `"`path'"'
+    // Use Stata string functions instead of Mata
+    local p = subinstr(`"`p'"', "\", "/", .)
+
+    // Use Stata's confirm file/direxists instead of Mata
+    capture confirm file "`p'/."
+    if _rc {
+        di as error "Directory does not exist:"
+        di as error "`p'"
+        exit 601
+    }
+
+    preserve
+        use "`regfile'", clear
+        drop if lower(key) == "`k'"
+        set obs `=_N+1'
+        replace key  = "`k'"   in L
+        replace root = `"`p'"' in L
+        capture save "`regfile'", replace
+        if _rc {
+            restore
+            di as error "Could not update registry file:"
+            di as error "`regfile'"
+            exit 603
+        }
+    restore
+
+    di as txt "Saved: `project' -> `p'"
+    return local root "`p'"
+    exit
+}
 
     // ---- GET (default): retrieve root for project() ----
     local root ""
