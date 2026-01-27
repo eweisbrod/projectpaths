@@ -27,7 +27,7 @@ program define project_paths_list, rclass
     // ---- locate PERSONAL and registry file (robust path handling) ----
     local personal_raw : sysdir PERSONAL
     local personal "`personal_raw'"
-    mata: st_local("personal", subinstr(st_local("personal"), char(92), "/", .))
+    mata: st_local("personal", subinstr(st_local("personal", ""), char(92), "/", .))
     if substr("`personal'", strlen("`personal'"), 1) != "/" {
         local personal "`personal'/"
     }
@@ -36,10 +36,10 @@ program define project_paths_list, rclass
 
     // ---- ensure PERSONAL directory exists ----
     tempname okd
-    mata: st_numscalar("`okd'", direxists("`personal'"))
+    mata: st_numscalar("`okd'", direxists(st_local("personal", "")))
     if scalar(`okd') == 0 {
         capture mkdir "`personal'"
-        mata: st_numscalar("`okd'", direxists("`personal'"))
+        mata: st_numscalar("`okd'", direxists(st_local("personal", "")))
         if scalar(`okd') == 0 {
             di as error "Could not create or access PERSONAL directory:"
             di as error "`personal'"
@@ -92,7 +92,7 @@ program define project_paths_list, rclass
 
     // Normalize key: lowercase + trim (Mata-safe, allows hyphens)
     local k "`project'"
-    mata: st_local("k", strlower(strtrim(st_local("k"))))
+    mata: st_local("k", strlower(strtrim(st_local("k", ""))))
 
     // ---- REMOVE ----
     if "`remove'" != "" {
@@ -125,10 +125,10 @@ program define project_paths_list, rclass
         }
 
         local p `"`path'"'
-        mata: st_local("p", subinstr(st_local("p"), char(92), "/", .))
+        mata: st_local("p", subinstr(st_local("p", ""), char(92), "/", .))
 
         tempname ok
-        mata: st_numscalar("`ok'", direxists("`p'"))
+        mata: st_numscalar("`ok'", direxists(st_local("p", "")))
         if scalar(`ok') == 0 {
             di as error "Directory does not exist:"
             di as error "`p'"
@@ -186,9 +186,9 @@ program define project_paths_list, rclass
             exit 1
         }
 
-        mata: st_local("p", subinstr(st_local("p"), char(92), "/", .))
+        mata: st_local("p", subinstr(st_local("p", ""), char(92), "/", .))
         tempname okm
-        mata: st_numscalar("`okm'", direxists("`p'"))
+        mata: st_numscalar("`okm'", direxists(st_local("p", "")))
         if scalar(`okm') == 0 {
             di as error "Directory does not exist:"
             di as error "`p'"
@@ -215,10 +215,10 @@ program define project_paths_list, rclass
     }
     else {
         // Normalize stored root slashes and validate
-        mata: st_local("root", subinstr(st_local("root"), char(92), "/", .))
+        mata: st_local("root", subinstr(st_local("root", ""), char(92), "/", .))
 
         tempname ok2
-        mata: st_numscalar("`ok2'", direxists("`root'"))
+        mata: st_numscalar("`ok2'", direxists(st_local("root", "")))
         if scalar(`ok2') == 0 {
             if "`noprompt'" != "" | `is_batch' {
                 di as error "Stored project root no longer exists:"
@@ -237,9 +237,9 @@ program define project_paths_list, rclass
                 exit 1
             }
 
-            mata: st_local("p", subinstr(st_local("p"), char(92), "/", .))
+            mata: st_local("p", subinstr(st_local("p", ""), char(92), "/", .))
             tempname ok3
-            mata: st_numscalar("`ok3'", direxists("`p'"))
+            mata: st_numscalar("`ok3'", direxists(st_local("p", "")))
             if scalar(`ok3') == 0 {
                 di as error "Directory does not exist:"
                 di as error "`p'"
